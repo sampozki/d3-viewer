@@ -63,7 +63,6 @@ jobs:
           files: |
             src-tauri/target/release/bundle/**/*.msi
             src-tauri/target/release/bundle/**/*.exe
-            src-tauri/target/release/bundle/**/*.zip
             src-tauri/target/release/bundle/**/*.sig
         env:
           GITHUB_TOKEN: ${{ secrets.secret }}
