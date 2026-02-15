@@ -22,6 +22,17 @@ body {
   color: var(--text-primary);
 }
 
+.navbar {
+ padding: 0.4rem;
+}
+
+.app-logo {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  display: inline-block;
+}
+
 .app-shell {
   height: calc(100vh - 56px);
 }

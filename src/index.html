@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>3D Viewer - STL & 3MF</title>
+  <title>D3-viewer</title>
 
   <!-- Bootswatch theme (Bootstrap-compatible) -->
   <link
@@ -17,14 +17,15 @@
 <body>
   <!-- Top navbar -->
   <nav class="navbar navbar-expand-lg navbar-dark bg-dark px-3">
-    <span class="navbar-brand mb-0 h1">3D Viewer - STL &amp; 3MF</span>
+    <span class="navbar-brand mb-0 h1 d-flex align-items-center gap-2">
+      <span>D3-viewer</span>
+    </span>
     <div class="ms-auto d-flex align-items-center gap-2">
       <button
         class="btn btn-sm btn-outline-light"
         type="button"
-        data-bs-toggle="tooltip"
-        data-bs-placement="bottom"
-        title="Supported: .stl and .3mf | Assumption: 1 unit = 1 mm | Controls: mouse drag rotate view, right-drag pan, wheel zoom, click model to show rotate gizmo, optional 30/45 degree snap, R = reset/fit."
+        data-bs-toggle="modal"
+        data-bs-target="#helpModal"
         aria-label="Viewer instructions"
       >
         Help
@@ -36,11 +37,9 @@
     <div class="row h-100 g-0">
       <!-- Left controls -->
       <aside id="controlPanel" class="col-12 col-lg-3 p-3">
-        <h2 class="h5">Controls</h2>
-
-        <input class="d-none" id="fileInput" type="file" accept=".stl,.3mf" aria-label="Open STL or 3MF file" />
 
         <!-- Clickable drag-and-drop zone -->
+        <input class="d-none" id="fileInput" type="file" accept=".stl,.3mf" aria-label="Open STL or 3MF file" />
         <div id="dropZone" class="p-3 mb-3 text-center" role="button" tabindex="0" aria-label="Drag and drop STL or 3MF files here">
           <div class="fw-semibold">Drag &amp; drop file here</div>
           <div class="text-muted small">or click to choose .stl / .3mf</div>
@@ -62,11 +61,11 @@
 
         <div class="form-check form-switch mb-3">
           <input class="form-check-input" type="checkbox" role="switch" id="toggleGround" checked />
-          <label class="form-check-label" for="toggleGround">Show grid + ground plane</label>
+          <label class="form-check-label" for="toggleGround">Show grid + plane</label>
         </div>
 
         <div class="mb-3">
-          <label for="lightAngle" class="form-label fw-semibold d-block mb-1">Light rotation around object</label>
+          <label for="lightAngle" class="form-label fw-semibold d-block mb-1">Light rotation</label>
           <input id="lightAngle" type="range" class="form-range" min="0" max="360" step="1" value="34" aria-label="Light angle around object" />
         </div>
 
@@ -84,22 +83,24 @@
             <input class="form-check-input" type="checkbox" role="switch" id="measureMode" />
             <label class="form-check-label" for="measureMode">Measure mode</label>
           </div>
-          <div class="form-check mt-1">
-            <input class="form-check-input" type="checkbox" id="measureGuides" checked />
-            <label class="form-check-label" for="measureGuides">Show smart guides (normal + circle)</label>
+          <div id="measureModeOptions" class="mt-1 d-none">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="measureGuides" checked />
+              <label class="form-check-label" for="measureGuides">Show measurement guide</label>
+            </div>
+            <div class="form-check mt-1">
+              <input class="form-check-input" type="checkbox" id="measureSnap" checked />
+              <label class="form-check-label" for="measureSnap">Snap to wireframe</label>
+            </div>
           </div>
-          <div class="form-check mt-1">
-            <input class="form-check-input" type="checkbox" id="measureSnap" checked />
-            <label class="form-check-label" for="measureSnap">Snap to wireframe</label>
+          <div id="measurementsPanel" class="mt-2 d-none">
+            <button id="clearMeasurements" class="btn btn-outline-secondary btn-sm d-none" type="button">Clear measurements</button>
+            <div id="measurementsList" class="small mt-2 text-muted"></div>
           </div>
-          <div class="form-text">Click two points on model to measure distance in mm.</div>
-          <button id="clearMeasurements" class="btn btn-outline-secondary btn-sm mt-2" type="button">Clear measurements</button>
-          <div id="measurementsList" class="small mt-2 text-muted">No measurements.</div>
         </div>
 
         <button id="fitBtn" class="btn btn-primary w-100 mb-2" type="button">Reset / Fit View (R)</button>
 
-        <div class="small text-muted">Runs through the Tauri dev server in development.</div>
       </aside>
 
       <!-- Main 3D viewer -->
@@ -113,7 +114,7 @@
             <div id="metricsContent" class="small">
               <div class="text-muted">No model loaded.</div>
             </div>
-            <div class="small text-muted mt-2">Assumption: <strong>1 unit = 1 mm</strong></div>
+
           </div>
         </div>
 
@@ -128,6 +129,32 @@
         <!-- Error/warning alerts -->
         <div id="alertBox"></div>
       </main>
+    </div>
+  </div>
+
+  <div class="modal fade" id="helpModal" tabindex="-1" aria-labelledby="helpModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="helpModalLabel">Viewer Help</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body small">
+          <div><strong>Supported files:</strong> <code>.stl</code>, <code>.3mf</code></div>
+          <div><strong>Units:</strong> 1 unit = 1 mm</div>
+          <hr class="my-2" />
+          <div><strong>Controls:</strong></div>
+          <div>Mouse drag: rotate view</div>
+          <div>Right-drag: pan</div>
+          <div>Mouse wheel: zoom</div>
+          <div>Click model: show rotate gizmo</div>
+          <div>Click empty space: hide gizmo</div>
+          <div>W/A/S/D: move camera</div>
+          <div>Q/E: down/up</div>
+          <div>Shift: faster movement</div>
+          <div>R: reset/fit view</div>
+        </div>
+      </div>
     </div>
   </div>
 

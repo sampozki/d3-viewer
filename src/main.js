@@ -17,14 +17,17 @@ const toggleGround = document.getElementById('toggleGround');
 const lightAngle = document.getElementById('lightAngle');
 const rotationSnap = document.getElementById('rotationSnap');
 const measureModeToggle = document.getElementById('measureMode');
+const measureModeOptions = document.getElementById('measureModeOptions');
 const measureGuidesToggle = document.getElementById('measureGuides');
 const measureSnapToggle = document.getElementById('measureSnap');
+const measurementsPanel = document.getElementById('measurementsPanel');
 const clearMeasurementsBtn = document.getElementById('clearMeasurements');
 const measurementsList = document.getElementById('measurementsList');
 const fitBtn = document.getElementById('fitBtn');
 const metricsContent = document.getElementById('metricsContent');
 const loadingOverlay = document.getElementById('loadingOverlay');
 const alertBox = document.getElementById('alertBox');
+const toastContainer = document.getElementById('toastContainer');
 
 // In-app debug logger for environments where WebView console is not visible.
 const debugLogState = {
@@ -440,6 +443,27 @@ function intersectsTransformGizmo(event) {
   });
 }
 
+function showToast(message, type = 'danger', delay = 5000) {
+  if (!toastContainer) return;
+  const toastEl = document.createElement('div');
+  toastEl.className = `toast align-items-center text-bg-${type} border-0`;
+  toastEl.setAttribute('role', 'alert');
+  toastEl.setAttribute('aria-live', 'assertive');
+  toastEl.setAttribute('aria-atomic', 'true');
+  toastEl.innerHTML = `
+    <div class="d-flex">
+      <div class="toast-body">${message}</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+    </div>
+  `;
+  toastContainer.appendChild(toastEl);
+  const toast = new bootstrap.Toast(toastEl, { delay });
+  toastEl.addEventListener('hidden.bs.toast', () => {
+    toastEl.remove();
+  });
+  toast.show();
+}
+
 function pickModelMesh(event) {
   if (!modelRoot) return null;
   updatePointerNdc(event);
@@ -678,12 +702,32 @@ function clearMeasurements() {
   measurements.length = 0;
   pendingMeasurement = null;
   measurementId = 1;
-  measurementsList.textContent = 'No measurements.';
+  measurementsList.textContent = '';
+  updateMeasurementsList();
+}
+
+function updateMeasurementUiVisibility() {
+  if (measureModeOptions) {
+    measureModeOptions.classList.toggle('d-none', !isMeasureMode);
+  }
+
+  const hasMeasurements = measurements.length > 0;
+  const hasPending = Boolean(pendingMeasurement);
+  const showPanel = hasMeasurements || hasPending;
+
+  if (measurementsPanel) {
+    measurementsPanel.classList.toggle('d-none', !showPanel);
+  }
+  if (clearMeasurementsBtn) {
+    clearMeasurementsBtn.classList.toggle('d-none', !hasMeasurements);
+  }
 }
 
 function updateMeasurementsList() {
+  updateMeasurementUiVisibility();
+
   if (!measurements.length) {
-    measurementsList.textContent = pendingMeasurement ? 'Pick second point...' : 'No measurements.';
+    measurementsList.textContent = pendingMeasurement ? 'Pick second point...' : '';
     return;
   }
   measurementsList.innerHTML = measurements
@@ -722,6 +766,7 @@ function addMeasurementPoint(pointWorld) {
 
 function setMeasureMode(enabled) {
   isMeasureMode = enabled;
+  updateMeasurementUiVisibility();
   if (enabled) {
     setRotateGizmoVisible(false);
   } else if (pendingMeasurement) {
@@ -984,6 +1029,7 @@ async function loadFromFile(file) {
       stack: err?.stack || null
     });
     showAlert(`Failed to parse file: ${err.message || 'Unknown error'}`, 'danger', 7000);
+    showToast(`Model load failed: ${err?.message || 'Unknown error'}`, 'danger', 7000);
   } finally {
     setLoading(false);
   }
@@ -1012,6 +1058,7 @@ async function loadFileFromTauriPath(path, invokeFn = null) {
       stack: err?.stack || null
     });
     showAlert(`Failed to open startup file: ${err?.message || String(err)}`, 'danger', 7000);
+    showToast(`Model load failed: ${err?.message || String(err)}`, 'danger', 7000);
   }
 }
 
@@ -1349,7 +1396,9 @@ async function handleDrop(e) {
     uriList: dataTransfer?.getData('text/uri-list') || null,
     plainText: dataTransfer?.getData('text/plain') || null
   });
-  showAlert('Unsupported dropped item. Please drop a .stl or .3mf file.', 'warning', 4000);
+  const unsupportedDropMsg = 'Unsupported dropped item. Please drop a .stl or .3mf file.';
+  showAlert(unsupportedDropMsg, 'warning', 4000);
+  showToast(unsupportedDropMsg, 'warning', 4000);
 }
 
 dropTargets.forEach((target) => target.addEventListener('drop', handleDrop));
@@ -1419,6 +1468,7 @@ gridHelper.visible = toggleGround.checked;
 ground.visible = toggleGround.checked;
 updateLightAngle();
 updateRotationSnap();
+updateMeasurementUiVisibility();
 onResize();
 animate();
 initTauriStartupFileOpen();
