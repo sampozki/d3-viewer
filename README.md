@@ -51,6 +51,23 @@ Build desktop app bundle:
 npm run tauri build
 ```
 
+## Tag release
+
+GitHub Actions is configured to build and publish a release when you push a version tag.
+
+Example (replace version as needed):
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+If you want to push all local tags:
+
+```bash
+git push --tags
+```
+
 ## Quick checks
 
 Frontend syntax check:
