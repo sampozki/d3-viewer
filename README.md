@@ -1,7 +1,67 @@
-# Tauri + Vanilla
+# 3D Viewer (STL / 3MF)
 
-This template should help get you started developing with Tauri in vanilla HTML, CSS and Javascript.
+Desktop 3D model viewer built with Tauri and Three.js.  
+Supports loading `.stl` and `.3mf` files, model inspection, rotation gizmo, measurements, and drag-and-drop.
 
-## Recommended IDE Setup
+## Technologies
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+- Tauri 2 (Rust backend + desktop shell)
+- Three.js (3D rendering)
+- Vite (frontend dev server + build)
+- Vanilla JavaScript, HTML, CSS
+- Bootswatch / Bootstrap 5 (UI styling)
+
+## Requirements
+
+- Node.js + npm
+- Rust toolchain (`rustup`, `cargo`)
+- Tauri prerequisites for your OS
+
+## Development
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Run app in development mode:
+
+```bash
+npm run tauri dev
+```
+
+Run frontend only (without desktop shell):
+
+```bash
+npm run dev
+```
+
+## Build
+
+Build frontend assets:
+
+```bash
+npm run build
+```
+
+Build desktop app bundle:
+
+```bash
+npm run tauri build
+```
+
+## Quick checks
+
+Frontend syntax check:
+
+```bash
+node --check src/main.js
+```
+
+Rust compile check:
+
+```bash
+cd src-tauri
+cargo check
+```
