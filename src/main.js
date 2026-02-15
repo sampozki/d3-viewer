@@ -25,6 +25,9 @@ const clearMeasurementsBtn = document.getElementById('clearMeasurements');
 const measurementsList = document.getElementById('measurementsList');
 const fitBtn = document.getElementById('fitBtn');
 const metricsContent = document.getElementById('metricsContent');
+const tcModeTranslateBtn = document.getElementById('tcModeTranslate');
+const tcModeRotateBtn = document.getElementById('tcModeRotate');
+const tcModeScaleBtn = document.getElementById('tcModeScale');
 const loadingOverlay = document.getElementById('loadingOverlay');
 const alertBox = document.getElementById('alertBox');
 const toastContainer = document.getElementById('toastContainer');
@@ -221,6 +224,28 @@ transformControls.addEventListener('objectChange', () => {
   updateMetrics();
   fitShadowCameraToModel(modelRoot);
 });
+
+function updateTransformModeButtons(mode) {
+  const modes = [
+    { key: 'translate', el: tcModeTranslateBtn },
+    { key: 'rotate', el: tcModeRotateBtn },
+    { key: 'scale', el: tcModeScaleBtn }
+  ];
+
+  modes.forEach(({ key, el }) => {
+    if (!el) return;
+    const active = key === mode;
+    el.classList.toggle('btn-primary', active);
+    el.classList.toggle('btn-outline-primary', !active);
+    el.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+}
+
+function setTransformMode(mode) {
+  if (!['translate', 'rotate', 'scale'].includes(mode)) return;
+  transformControls.setMode(mode);
+  updateTransformModeButtons(mode);
+}
 
 // Lights
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -1155,6 +1180,9 @@ toggleGround.addEventListener('change', () => {
 fitBtn.addEventListener('click', fitView);
 lightAngle.addEventListener('input', updateLightAngle);
 rotationSnap.addEventListener('change', updateRotationSnap);
+tcModeTranslateBtn?.addEventListener('click', () => setTransformMode('translate'));
+tcModeRotateBtn?.addEventListener('click', () => setTransformMode('rotate'));
+tcModeScaleBtn?.addEventListener('click', () => setTransformMode('scale'));
 measureModeToggle.addEventListener('change', () => {
   setMeasureMode(measureModeToggle.checked);
 });
@@ -1223,6 +1251,10 @@ renderer.domElement.addEventListener('pointerup', (event) => {
 
 document.addEventListener('pointerdown', (event) => {
   if (!modelRoot) return;
+  const el = event.target;
+  const clickedTransformModeUi =
+    el instanceof Element && el.closest('#tcModeTranslate, #tcModeRotate, #tcModeScale, [aria-label="Transform mode"]');
+  if (clickedTransformModeUi) return;
   if (!threeContainer.contains(event.target)) {
     setRotateGizmoVisible(false);
     gizmoPointerInteraction = false;
@@ -1468,6 +1500,7 @@ gridHelper.visible = toggleGround.checked;
 ground.visible = toggleGround.checked;
 updateLightAngle();
 updateRotationSnap();
+updateTransformModeButtons('rotate');
 updateMeasurementUiVisibility();
 onResize();
 animate();
