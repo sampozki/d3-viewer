@@ -146,11 +146,13 @@ window.addEventListener('unhandledrejection', (event) => {
 // -------------------------
 // Three.js scene setup
 // -------------------------
+THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xe9eff6);
 
 const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 500000);
-camera.position.set(180, 140, 220);
+camera.position.set(180, 220, 140);
+camera.up.set(0, 0, 1);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -170,7 +172,20 @@ threeContainer.appendChild(labelRenderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
-controls.target.set(0, 30, 0);
+controls.target.set(0, 0, 30);
+const keyboardMoveState = {
+  KeyW: false,
+  KeyA: false,
+  KeyS: false,
+  KeyD: false,
+  KeyQ: false,
+  KeyE: false,
+  ShiftLeft: false,
+  ShiftRight: false
+};
+const keyboardMoveClock = new THREE.Clock();
+const keyboardMoveSpeed = 70; // world units per second (default)
+const keyboardMoveFastSpeed = 220; // world units per second (hold Shift)
 
 // Click-to-rotate gizmo (Blender-style circles) for the loaded model.
 const transformControls = new TransformControls(camera, renderer.domElement);
@@ -187,7 +202,7 @@ scene.add(transformHelper);
 
 transformControls.addEventListener('dragging-changed', (event) => {
   controls.enabled = !event.value;
-  // After finishing rotation, place model back onto the ground plane (Y=0).
+  // After finishing rotation, place model back onto the ground plane (Z=0).
   if (!event.value && modelRoot) {
     restModelOnGround(modelRoot);
     clearMeasurements();
@@ -212,7 +227,7 @@ const hemiLight = new THREE.HemisphereLight(0xffffff, 0x6f7f8f, 0.4);
 scene.add(hemiLight);
 
 const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
-dirLight.position.set(180, 260, 120);
+dirLight.position.set(180, 120, 260);
 dirLight.castShadow = true;
 // Higher resolution shadow map for cleaner edges.
 dirLight.shadow.mapSize.set(4096, 4096);
@@ -229,15 +244,15 @@ dirLight.shadow.radius = 2.2;
 dirLight.shadow.blurSamples = 8;
 scene.add(dirLight.target);
 scene.add(dirLight);
-const lightOrbitRadius = Math.hypot(dirLight.position.x, dirLight.position.z);
-const lightHeight = dirLight.position.y;
+const lightOrbitRadius = Math.hypot(dirLight.position.x, dirLight.position.y);
+const lightHeight = dirLight.position.z;
 
 function updateLightAngle() {
   const angleRad = THREE.MathUtils.degToRad(Number(lightAngle.value));
   dirLight.position.set(
     Math.cos(angleRad) * lightOrbitRadius,
-    lightHeight,
-    Math.sin(angleRad) * lightOrbitRadius
+    Math.sin(angleRad) * lightOrbitRadius,
+    lightHeight
   );
   dirLight.target.position.set(0, 0, 0);
   dirLight.target.updateMatrixWorld();
@@ -269,20 +284,20 @@ function fitShadowCameraToModel(root) {
   dirLight.shadow.camera.updateProjectionMatrix();
 
   // Aim light toward model vertical center for more stable coverage.
-  dirLight.target.position.set(0, center.y, 0);
+  dirLight.target.position.set(0, 0, center.z);
   dirLight.target.updateMatrixWorld();
 }
 
 // Helpers and ground
 const gridHelper = new THREE.GridHelper(600, 60, 0x6c7b8a, 0xbcc8d4);
-gridHelper.position.y = 0;
+gridHelper.rotation.x = Math.PI / 2;
+gridHelper.position.z = 0;
 scene.add(gridHelper);
 
 const groundMaterial = new THREE.ShadowMaterial({ opacity: 0.15 });
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1200), groundMaterial);
-ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
-ground.position.y = 0;
+ground.position.z = 0;
 scene.add(ground);
 
 // Loaders
@@ -313,6 +328,14 @@ let hoverLabel = null;
 let guideArrow = null;
 let guideCircle = null;
 let measurementGuideRadius = 4;
+let loadSequence = 0;
+
+// Shared mode materials reduce per-mesh allocations during import.
+const sharedNormalsMaterial = new THREE.MeshNormalMaterial({ flatShading: false });
+const sharedWireMaterial = new THREE.MeshBasicMaterial({
+  color: 0x111111,
+  wireframe: true
+});
 
 // -------------------------
 // Utility helpers
@@ -353,7 +376,24 @@ function disposeObject3D(root) {
       if (obj.geometry) obj.geometry.dispose();
 
       const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-      mats.forEach((m) => m && m.dispose && m.dispose());
+      mats.forEach((m) => {
+        if (!m || !m.dispose) return;
+        if (m === sharedNormalsMaterial || m === sharedWireMaterial) return;
+        m.dispose();
+      });
+
+      // Dispose mode materials that may not currently be assigned to obj.material.
+      const modeMats = [
+        obj.userData?.solidMaterial,
+        obj.userData?.normalsMaterial,
+        obj.userData?.wireMaterial
+      ];
+      modeMats.forEach((m) => {
+        if (!m || !m.dispose) return;
+        if (m === sharedNormalsMaterial || m === sharedWireMaterial) return;
+        if (mats.includes(m)) return;
+        m.dispose();
+      });
     }
 
     if (obj.isLineSegments) {
@@ -453,7 +493,7 @@ function snapHitToWireframe(hit) {
 
 function getHitNormalWorld(hit) {
   const n = hit.face?.normal?.clone();
-  if (!n) return new THREE.Vector3(0, 1, 0);
+  if (!n) return new THREE.Vector3(0, 0, 1);
   const normalMatrix = new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld);
   return n.applyMatrix3(normalMatrix).normalize();
 }
@@ -610,7 +650,7 @@ function updateMeasurementHover(event) {
 
   const dist = pendingMeasurement.point.distanceTo(point);
   const labelPos = pendingMeasurement.point.clone().add(point).multiplyScalar(0.5);
-  labelPos.y += Math.max(dist * 0.02, 1.5);
+  labelPos.z += Math.max(dist * 0.02, 1.5);
 
   if (!hoverLabel) {
     hoverLabel = createMeasurementLabel(`Preview: ${format3(dist)} mm`, labelPos);
@@ -670,7 +710,7 @@ function addMeasurementPoint(pointWorld) {
   const distance = pendingMeasurement.point.distanceTo(pointWorld);
   const id = measurementId++;
   const labelPos = pendingMeasurement.point.clone().add(pointWorld).multiplyScalar(0.5);
-  labelPos.y += Math.max(distance * 0.02, 1.5);
+  labelPos.z += Math.max(distance * 0.02, 1.5);
   const label = createMeasurementLabel(`M${id}: ${format3(distance)} mm`, labelPos);
   measurementsGroup.add(label);
 
@@ -712,18 +752,15 @@ function prepareMeshForModes(mesh) {
     roughness: 0.7
   });
 
-  // Material for Normals mode
-  mesh.userData.normalsMaterial = new THREE.MeshNormalMaterial({ flatShading: false });
+  // Material for Normals mode (shared)
+  mesh.userData.normalsMaterial = sharedNormalsMaterial;
 
   mesh.material = mesh.userData.solidMaterial;
   mesh.castShadow = true;
   mesh.receiveShadow = false;
 
-  // Pure wireframe material so wireframe mode has no solid fill.
-  mesh.userData.wireMaterial = new THREE.MeshBasicMaterial({
-    color: 0x111111,
-    wireframe: true
-  });
+  // Pure wireframe material so wireframe mode has no solid fill (shared).
+  mesh.userData.wireMaterial = sharedWireMaterial;
 }
 
 function applyViewMode(mode) {
@@ -767,18 +804,18 @@ function computeStatsAndBounds(root) {
   return { bbox, size, center, vertices, triangles };
 }
 
-function updateMetrics() {
+function updateMetrics(stats = null) {
   if (!modelRoot) {
     metricsContent.innerHTML = `<div class="text-muted">No model loaded.</div>`;
     return;
   }
 
-  const { size, center, vertices, triangles } = computeStatsAndBounds(modelRoot);
+  const { size, center, vertices, triangles } = stats || computeStatsAndBounds(modelRoot);
 
   metricsContent.innerHTML = `
     <div><strong>Width (X):</strong> ${format3(size.x)} mm</div>
-    <div><strong>Depth (Z):</strong> ${format3(size.z)} mm</div>
-    <div><strong>Height (Y):</strong> ${format3(size.y)} mm</div>
+    <div><strong>Depth (Y):</strong> ${format3(size.y)} mm</div>
+    <div><strong>Height (Z):</strong> ${format3(size.z)} mm</div>
     <hr class="my-2">
     <div><strong>BBox Center:</strong> (${format3(center.x)}, ${format3(center.y)}, ${format3(center.z)}) mm</div>
     <div><strong>Vertices:</strong> ${Math.round(vertices).toLocaleString()}</div>
@@ -807,7 +844,7 @@ function fitView() {
 
   const fov = THREE.MathUtils.degToRad(camera.fov);
   const distance = (maxDim / (2 * Math.tan(fov / 2))) * 1.4;
-  const dir = new THREE.Vector3(1, 0.8, 1).normalize();
+  const dir = new THREE.Vector3(1, 1, 0.8).normalize();
 
   camera.position.copy(center).add(dir.multiplyScalar(distance));
   camera.near = Math.max(distance / 1000, 0.01);
@@ -819,16 +856,16 @@ function fitView() {
 }
 
 function centerAndGroundModel(root) {
-  // Center X/Z to origin and place model so minimum Y sits exactly on Y=0 plane.
+  // Center X/Y to origin and place model so minimum Z sits exactly on Z=0 plane.
   const box = new THREE.Box3().setFromObject(root);
   const center = box.getCenter(new THREE.Vector3());
-  root.position.set(-center.x, -box.min.y, -center.z);
+  root.position.set(-center.x, -center.y, -box.min.z);
 }
 
 function restModelOnGround(root) {
-  // Preserve current rotation/orientation; only offset vertically so min Y is 0.
+  // Preserve current rotation/orientation; only offset vertically so min Z is 0.
   const box = new THREE.Box3().setFromObject(root);
-  root.position.y -= box.min.y;
+  root.position.z -= box.min.z;
 }
 
 function wrapModelInCenteredPivot(root) {
@@ -850,6 +887,7 @@ function wrapModelInCenteredPivot(root) {
 // -------------------------
 async function loadFromFile(file) {
   if (!file) return;
+  const loadToken = ++loadSequence;
 
   const name = String(file.name || '').toLowerCase();
   const mime = String(file.type || '').toLowerCase();
@@ -879,7 +917,6 @@ async function loadFromFile(file) {
     let root;
     if (isSTL) {
       const geometry = stlLoader.parse(buffer);
-      geometry.computeVertexNormals();
       const mesh = new THREE.Mesh(geometry);
       root = new THREE.Group();
       root.add(mesh);
@@ -892,20 +929,28 @@ async function loadFromFile(file) {
     clearModel();
 
     // Ensure all meshes are prepared for display modes.
-    let meshCount = 0;
-    root.traverse((obj) => {
-      if (obj.isMesh && obj.geometry) {
-        if (!obj.geometry.attributes.normal) obj.geometry.computeVertexNormals();
-        prepareMeshForModes(obj);
-        meshCount += 1;
-      }
-    });
+    const meshes = [];
+    if (isSTL) {
+      const stlMesh = root.children[0];
+      if (stlMesh?.isMesh && stlMesh.geometry) meshes.push(stlMesh);
+    } else {
+      root.traverse((obj) => {
+        if (obj.isMesh && obj.geometry) meshes.push(obj);
+      });
+    }
+
+    for (const mesh of meshes) {
+      if (!mesh.geometry.attributes.normal) mesh.geometry.computeVertexNormals();
+      prepareMeshForModes(mesh);
+    }
+
+    const meshCount = meshes.length;
 
     if (meshCount === 0) {
       throw new Error('No mesh geometry found in file.');
     }
 
-    // Center model and place on plane Y=0.
+    // Center model and place on plane Z=0.
     centerAndGroundModel(root);
     modelRoot = wrapModelInCenteredPivot(root);
     scene.add(modelRoot);
@@ -914,12 +959,21 @@ async function loadFromFile(file) {
     setRotateGizmoVisible(false);
     fitShadowCameraToModel(modelRoot);
 
-    // Apply current mode, then fit and update metrics.
+    // Apply current mode and fit immediately for fast first paint.
     applyViewMode(currentMode);
     fitView();
-    updateMetrics();
-    const modelSize = computeStatsAndBounds(modelRoot).size;
-    measurementGuideRadius = THREE.MathUtils.clamp(Math.max(modelSize.x, modelSize.y, modelSize.z) * 0.02, 2, 18);
+
+    // Defer heavy stats/metrics until after first frame to improve perceived load speed.
+    requestAnimationFrame(() => {
+      if (loadToken !== loadSequence || !modelRoot) return;
+      const stats = computeStatsAndBounds(modelRoot);
+      updateMetrics(stats);
+      measurementGuideRadius = THREE.MathUtils.clamp(
+        Math.max(stats.size.x, stats.size.y, stats.size.z) * 0.02,
+        2,
+        18
+      );
+    });
 
     showAlert(`Loaded: ${file.name}`, 'success', 2500);
     debugLog('loadFromFile:success', { name: file.name || '(no-name)' });
@@ -1132,9 +1186,19 @@ document.addEventListener('pointerdown', (event) => {
 window.addEventListener('keydown', (e) => {
   const tag = (document.activeElement?.tagName || '').toLowerCase();
   if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+  if (e.code in keyboardMoveState) {
+    keyboardMoveState[e.code] = true;
+    return;
+  }
   if (e.key.toLowerCase() === 'r') {
     e.preventDefault();
     fitView();
+  }
+});
+
+window.addEventListener('keyup', (e) => {
+  if (e.code in keyboardMoveState) {
+    keyboardMoveState[e.code] = false;
   }
 });
 
@@ -1322,6 +1386,29 @@ window.addEventListener('resize', onResize);
 // -------------------------
 function animate() {
   requestAnimationFrame(animate);
+  const dt = keyboardMoveClock.getDelta();
+  const moveDir = new THREE.Vector3();
+  const forward = new THREE.Vector3();
+  camera.getWorldDirection(forward);
+  if (forward.lengthSq() > 0) forward.normalize();
+  const right = new THREE.Vector3().crossVectors(forward, camera.up);
+  if (right.lengthSq() > 0) right.normalize();
+
+  if (keyboardMoveState.KeyW) moveDir.add(forward);
+  if (keyboardMoveState.KeyS) moveDir.sub(forward);
+  if (keyboardMoveState.KeyD) moveDir.add(right);
+  if (keyboardMoveState.KeyA) moveDir.sub(right);
+  if (keyboardMoveState.KeyE) moveDir.add(camera.up);
+  if (keyboardMoveState.KeyQ) moveDir.sub(camera.up);
+  const moveSpeed = (keyboardMoveState.ShiftLeft || keyboardMoveState.ShiftRight)
+    ? keyboardMoveFastSpeed
+    : keyboardMoveSpeed;
+
+  if (moveDir.lengthSq() > 0) {
+    moveDir.normalize().multiplyScalar(moveSpeed * dt);
+    camera.position.add(moveDir);
+    controls.target.add(moveDir);
+  }
   controls.update();
   renderer.render(scene, camera);
   labelRenderer.render(scene, camera);
